@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +10,15 @@ router = APIRouter(
     prefix="/interactions",
     tags=["Interactions"]
 )
+
+
+class InteractionUpdate(BaseModel):
+    rating: int | None = None
+    is_read: bool | None = None
+    review_text: str | None = None
+    started_at: str | None = None
+    read_at: str | None = None
+    source: str | None = None
 
 
 @router.get("/{user_id}")
@@ -77,4 +87,63 @@ def add_interaction(
     return {
         "message": "Взаимодействие пользователя с книгой добавлено",
         "interaction": interaction
+    }
+
+
+@router.put("/{interaction_id}")
+def update_interaction(
+    interaction_id: int,
+    interaction_data: InteractionUpdate,
+    db: Session = Depends(get_db)
+):
+    interaction = (
+        db.query(Interaction)
+        .filter(Interaction.id == interaction_id)
+        .first()
+    )
+
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Взаимодействие не найдено")
+
+    update_data = interaction_data.dict(exclude_unset=True)
+
+    if "rating" in update_data:
+        if update_data["rating"] < 1 or update_data["rating"] > 5:
+            raise HTTPException(
+                status_code=400,
+                detail="Оценка должна быть от 1 до 5"
+            )
+
+    for field, value in update_data.items():
+        setattr(interaction, field, value)
+
+    db.commit()
+    db.refresh(interaction)
+
+    return {
+        "message": "Взаимодействие успешно обновлено",
+        "interaction": interaction
+    }
+
+
+@router.delete("/{interaction_id}")
+def delete_interaction(
+    interaction_id: int,
+    db: Session = Depends(get_db)
+):
+    interaction = (
+        db.query(Interaction)
+        .filter(Interaction.id == interaction_id)
+        .first()
+    )
+
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Взаимодействие не найдено")
+
+    db.delete(interaction)
+    db.commit()
+
+    return {
+        "message": "Взаимодействие удалено",
+        "interaction_id": interaction_id
     }

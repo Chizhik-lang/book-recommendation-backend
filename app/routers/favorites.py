@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +10,11 @@ router = APIRouter(
     prefix="/favorites",
     tags=["Favorites"]
 )
+
+
+class FavoriteUpdate(BaseModel):
+    book_id: str | None = None
+    source: str | None = None
 
 
 @router.get("/{user_id}")
@@ -70,6 +76,53 @@ def add_favorite(user_id: str, book_id: str, db: Session = Depends(get_db)):
         "favorite_id": favorite.id,
         "user_id": user_id,
         "book_id": book_id
+    }
+
+
+@router.put("/{favorite_id}")
+def update_favorite(
+    favorite_id: int,
+    favorite_data: FavoriteUpdate,
+    db: Session = Depends(get_db)
+):
+    favorite = db.query(Favorite).filter(Favorite.id == favorite_id).first()
+
+    if not favorite:
+        raise HTTPException(status_code=404, detail="Запись в избранном не найдена")
+
+    update_data = favorite_data.dict(exclude_unset=True)
+
+    if "book_id" in update_data:
+        book = db.query(Book).filter(Book.id == update_data["book_id"]).first()
+
+        if not book:
+            raise HTTPException(status_code=404, detail="Новая книга не найдена")
+
+        existing = (
+            db.query(Favorite)
+            .filter(
+                Favorite.user_id == favorite.user_id,
+                Favorite.book_id == update_data["book_id"],
+                Favorite.id != favorite_id
+            )
+            .first()
+        )
+
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Эта книга уже есть в избранном у пользователя"
+            )
+
+    for field, value in update_data.items():
+        setattr(favorite, field, value)
+
+    db.commit()
+    db.refresh(favorite)
+
+    return {
+        "message": "Запись в избранном успешно обновлена",
+        "favorite": favorite
     }
 
 
