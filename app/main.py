@@ -8,7 +8,8 @@ from app.routers import (
     preferences,
     interactions,
     recommendations,
-    stats
+    stats,
+    auth
 )
 
 
@@ -34,6 +35,7 @@ app.include_router(preferences.router)
 app.include_router(interactions.router)
 app.include_router(recommendations.router)
 app.include_router(stats.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

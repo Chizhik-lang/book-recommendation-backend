@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.security import hash_password
 
 
 router = APIRouter(
@@ -16,14 +17,24 @@ class UserCreate(BaseModel):
     id: str
     username: str
     email: EmailStr
-    password_hash: str = "demo_password_hash"
+    password: str
     source: str = "created_from_api"
 
 
 class UserUpdate(BaseModel):
     username: str | None = None
     email: EmailStr | None = None
-    password_hash: str | None = None
+    password: str | None = None
+    source: str | None = None
+
+
+def user_to_response(user: User):
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "source": user.source
+    }
 
 
 @router.get("/")
@@ -39,7 +50,7 @@ def get_users(
         .all()
     )
 
-    return users
+    return [user_to_response(user) for user in users]
 
 
 @router.get("/{user_id}")
@@ -49,7 +60,7 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    return user
+    return user_to_response(user)
 
 
 @router.post("/")
@@ -74,7 +85,7 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
         id=user_data.id,
         username=user_data.username,
         email=user_data.email,
-        password_hash=user_data.password_hash,
+        password_hash=hash_password(user_data.password),
         source=user_data.source
     )
 
@@ -84,7 +95,7 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
 
     return {
         "message": "Пользователь успешно создан",
-        "user": new_user
+        "user": user_to_response(new_user)
     }
 
 
@@ -114,15 +125,24 @@ def update_user(
                 detail="Пользователь с таким email уже существует"
             )
 
-    for field, value in update_data.items():
-        setattr(user, field, value)
+    if "username" in update_data:
+        user.username = update_data["username"]
+
+    if "email" in update_data:
+        user.email = update_data["email"]
+
+    if "password" in update_data:
+        user.password_hash = hash_password(update_data["password"])
+
+    if "source" in update_data:
+        user.source = update_data["source"]
 
     db.commit()
     db.refresh(user)
 
     return {
         "message": "Данные пользователя успешно обновлены",
-        "user": user
+        "user": user_to_response(user)
     }
 
 
